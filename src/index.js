@@ -1,8 +1,9 @@
+require("dotenv").config();
 const express = require("express");
 require("./db/mongose");
 
 const app = express();
-//
+
 app.use(express.json());
 app.use(require("morgan")("dev"));
 

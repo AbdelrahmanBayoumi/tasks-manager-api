@@ -1,48 +1,66 @@
 const express = require("express");
-const bcrypt = require("bcryptjs");
 const User = require("../models/user");
-
+const auth = require("../middleware/auth.middleware");
 const userRouter = express.Router();
 
 userRouter.post("", async (req, res) => {
   try {
     const { name, email, age, password } = req.body;
     const user = new User({ name, email, age, password });
-    const result = await user.save();
-    res.status(201).send(result);
+
+    const token = await user.generateAuthToken();
+
+    res.send({ user, token });
   } catch (e) {
     console.log(e);
     res.status(400).send(e);
   }
 });
 
-userRouter.get("/", async (req, res) => {
+userRouter.post("/login", async (req, res) => {
   try {
-    const users = await User.find();
-    res.send(users);
+    const user = await User.findByCredentials(
+      req.body.email,
+      req.body.password
+    );
+
+    const token = await user.generateAuthToken();
+
+    res.send({ user, token });
   } catch (e) {
-    console.log(e);
-    res.status(500).send(e);
+    res.status(401).send();
   }
 });
 
-userRouter.get("/:id", async (req, res) => {
+userRouter.post("/logout", auth, async (req, res) => {
   try {
-    if (!req.params.id) {
-      throw new Error("ID not provided!!");
-    }
-    const user = await User.findById(req.params.id);
-    if (!user) {
-      return res.status(404).send();
-    }
-    res.status(200).send(user);
+    req.user.tokens = req.user.tokens.filter((token) => {
+      return token.token !== req.token;
+    });
+    await req.user.save();
+
+    res.send();
   } catch (e) {
-    console.log(e);
-    res.status(500).send(e);
+    res.status(500).send();
   }
 });
 
-userRouter.patch("/:id", async (req, res) => {
+userRouter.post("/logoutAll", auth, async (req, res) => {
+  try {
+    req.user.tokens = [];
+    await req.user.save();
+
+    res.send();
+  } catch (e) {
+    res.status(500).send();
+  }
+});
+
+userRouter.get("/me", auth, async (req, res) => {
+  res.send(req.user);
+});
+
+userRouter.patch("/me", auth, async (req, res) => {
   try {
     const updates = Object.keys(req.body);
     const allowedUpdates = ["name", "email", "age", "password"];
@@ -53,14 +71,7 @@ userRouter.patch("/:id", async (req, res) => {
     if (!isValidOperation) {
       return res.status(400).send({ error: "Invalid Updates!" });
     }
-
-    if (!req.params.id) {
-      throw new Error("ID not provided!!");
-    }
-    const user = await User.findById(req.params.id);
-    if (!user) {
-      return res.status(404).send();
-    }
+    const user = req.user;
 
     updates.forEach((update) => (user[update] = req.body[update]));
 
@@ -73,16 +84,17 @@ userRouter.patch("/:id", async (req, res) => {
   }
 });
 
-userRouter.delete("/:id", async (req, res) => {
+userRouter.delete("/me", auth, async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    // const user = await User.findByIdAndDelete(req.user._id);
 
-    if (!user) {
-      return res.status(404).send();
-    }
-
-    res.send(user);
+    // if (!user) {
+    //   return res.status(404).send();
+    // }
+    await req.user.deleteOne({ _id: req.user._id });
+    res.send(req.user);
   } catch (e) {
+    console.log(e);
     res.status(500).send();
   }
 });
